@@ -141,15 +141,30 @@ class AnnotationDetailView(APIView):
 
     UPDATE_FILTER_FIELDS = ('updated', 'created', 'user', 'consumer')
 
+    def _fetch(self, annotation_id, reply_id=None):
+        """
+        Annotation-type or Comment-type agnostic Note fetcher.
+
+        Returns a Note instance if found, None otherwise.
+        """
+        try:
+            if reply_id:
+                note = Note.comments.get(id=reply_id, parent_id=annotation_id)
+            else:
+                note = Note.objects.get(id=annotation_id)
+        except Note.DoesNotExist:
+            return None
+
+        return note
+
     def get(self, *args, **kwargs):  # pylint: disable=unused-argument
         """
         Get an existing annotation.
         """
-        note_id = self.kwargs.get('annotation_id')
+        print(self.kwargs)
+        note = self._fetch(self.kwargs.get('annotation_id'), self.kwargs.get('reply_id'))
 
-        try:
-            note = Note.objects.get(id=note_id)
-        except Note.DoesNotExist:
+        if not note:
             return Response('Annotation not found!', status=status.HTTP_404_NOT_FOUND)
 
         return Response(note.as_dict())
@@ -158,11 +173,9 @@ class AnnotationDetailView(APIView):
         """
         Update an existing annotation.
         """
-        note_id = self.kwargs.get('annotation_id')
+        note = self._fetch(self.kwargs.get('annotation_id'), self.kwargs.get('reply_id'))
 
-        try:
-            note = Note.objects.get(id=note_id)
-        except Note.DoesNotExist:
+        if not note:
             return Response('Annotation not found! No update performed.', status=status.HTTP_404_NOT_FOUND)
 
         try:
@@ -174,21 +187,61 @@ class AnnotationDetailView(APIView):
             return Response(status=status.HTTP_400_BAD_REQUEST)
 
         note.save()
-
         return Response(note.as_dict())
 
     def delete(self, *args, **kwargs):  # pylint: disable=unused-argument
         """
         Delete an annotation.
         """
-        note_id = self.kwargs.get('annotation_id')
+        note = self._fetch(self.kwargs.get('annotation_id'), self.kwargs.get('reply_id'))
 
-        try:
-            note = Note.objects.get(id=note_id)
-        except Note.DoesNotExist:
+        if not note:
             return Response('Annotation not found! No update performed.', status=status.HTTP_404_NOT_FOUND)
 
         note.delete()
 
         # Annotation deleted successfully.
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ReplyListView(APIView):
+    """
+    List all comments on a particular annotation or create.
+    """
+    def get(self, *args, **kwargs):    # pylint: disable=unused-argument
+        """
+        Fetch list of comments for a particular annotation.
+        """
+        note_id = self.kwargs.get('annotation_id')
+
+        results = Note.comments.filter(parent_id=note_id).order_by('-created')
+
+        # TODO(abrahms): as_dict might take a kwarg for comment vs note format?
+        return Response([result.as_dict() for result in results])
+
+    def post(self, *args, **kwargs):  # pylint: disable=unused-argument
+        """
+        Create a new reply for an annotation.
+
+        Returns 400 request if bad payload is sent or it was empty object.
+        """
+        if 'id' in self.request.DATA:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+
+        # Copy some data from the original Note object.
+        ann = Note.objects.get(id=self.kwargs.get('annotation_id'))
+        self.request.DATA['parent_id'] = ann.id
+        self.request.DATA['course_id'] = ann.course_id
+        self.request.DATA['usage_id'] = ann.usage_id
+
+        try:
+            note = Note.create(self.request.DATA)
+            note.full_clean()
+        except ValidationError as error:
+            log.debug(error, exc_info=True)
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+
+        note.save()
+
+        location = reverse('api:v1:annotations_comment_detail', kwargs={'annotation_id': note.parent_id, 'reply_id': note.id})
+        return Response(note.as_dict(), status=status.HTTP_201_CREATED, headers={'Location': location})

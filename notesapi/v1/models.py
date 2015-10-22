@@ -2,6 +2,7 @@ import json
 from django.db import models
 from django.core.exceptions import ValidationError
 
+from .managers import AnnotationManager, CommentManager
 
 class Note(models.Model):
     """
@@ -11,11 +12,15 @@ class Note(models.Model):
     course_id = models.CharField(max_length=255, db_index=True)
     usage_id = models.CharField(max_length=255, help_text="ID of XBlock where the text comes from")
     quote = models.TextField(default="")
+    parent = models.ForeignKey('Note', blank=True, null=True, help_text="Parent note, if this is a comment")
     text = models.TextField(default="", blank=True, help_text="Student's thoughts on the quote")
     ranges = models.TextField(help_text="JSON, describes position of quote in the source text")
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
     tags = models.TextField(help_text="JSON, list of comma-separated tags", default="[]")
+
+    objects = AnnotationManager()
+    comments = CommentManager()
 
     @classmethod
     def create(cls, note_dict):

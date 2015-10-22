@@ -2,6 +2,7 @@ from .common import *
 from notesserver.settings.logger import get_logger_config
 
 DEBUG = True
+DISABLE_TOKEN_CHECK = True
 
 ES_INDEXES = {'default': 'notes_index_dev'}
 
