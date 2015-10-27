@@ -21,6 +21,7 @@ class NoteTest(TestCase):
                 }
             ],
             "tags": [u"apple", u"pear"],
+            "permission_type": "personal",
         }
 
     def test_create_valid_note(self):

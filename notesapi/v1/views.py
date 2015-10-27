@@ -47,6 +47,8 @@ class AnnotationSearchView(APIView):
         if 'user' in params:
             query = query.filter(user_id=params['user'])
 
+        query = query.filter(permission_type=getattr(params, 'perm', Note.PERM_PERSONAL))
+
         if 'text' in params:
             query = query.filter(Q(text__icontains=params['text']) | Q(tags__icontains=params['text']))
 
@@ -107,7 +109,12 @@ class AnnotationListView(APIView):
         if 'course_id' not in params or 'user' not in params:
             return Response(status=status.HTTP_400_BAD_REQUEST)
 
-        results = Note.objects.filter(course_id=params['course_id'], user_id=params['user']).order_by('-updated')
+        results = Note.objects.filter(course_id=params['course_id']).order_by('-updated')
+        # Users can see the comments they've made, in addition to all course
+        # level permissions.
+        results = results.filter(Q(user_id=params['user'],
+                                   permission_type=Note.PERM_PERSONAL) |
+                                 Q(permission_type=Note.PERM_COURSE))
 
         return Response([result.as_dict() for result in results])
 
@@ -141,19 +148,23 @@ class AnnotationDetailView(APIView):
 
     UPDATE_FILTER_FIELDS = ('updated', 'created', 'user', 'consumer')
 
-    def _fetch(self, annotation_id, reply_id=None):
+    def _fetch(self, annotation_id, reply_id=None, user_id=None):
         """
         Annotation-type or Comment-type agnostic Note fetcher.
 
-        Returns a Note instance if found, None otherwise.
+        Returns a Note instance if found or throws Note.DoesNotExist.
         """
-        try:
-            if reply_id:
-                note = Note.comments.get(id=reply_id, parent_id=annotation_id)
-            else:
-                note = Note.objects.get(id=annotation_id)
-        except Note.DoesNotExist:
-            return None
+
+        if reply_id:
+            note = Note.comments.get(id=reply_id, parent_id=annotation_id)
+        else:
+            qs = Note.objects
+            if user_id:
+                # When you're driving via the web API browser, there is no
+                # user_id because we don't have authentication there.
+                qs = qs.filter(Q(user_id=user_id, permission_type=Note.PERM_PERSONAL) |
+                               Q(permission_type=Note.PERM_COURSE))
+            note = qs.get(id=annotation_id)
 
         return note
 
@@ -161,10 +172,11 @@ class AnnotationDetailView(APIView):
         """
         Get an existing annotation.
         """
-        print(self.kwargs)
-        note = self._fetch(self.kwargs.get('annotation_id'), self.kwargs.get('reply_id'))
-
-        if not note:
+        user = self.request.QUERY_PARAMS.get('user', None)
+        
+        try:
+            note = self._fetch(self.kwargs.get('annotation_id'), self.kwargs.get('reply_id'), user_id=user)
+        except Note.DoesNotExist:
             return Response('Annotation not found!', status=status.HTTP_404_NOT_FOUND)
 
         return Response(note.as_dict())
@@ -173,9 +185,10 @@ class AnnotationDetailView(APIView):
         """
         Update an existing annotation.
         """
-        note = self._fetch(self.kwargs.get('annotation_id'), self.kwargs.get('reply_id'))
-
-        if not note:
+        user = self.request.data.get('user', None)
+        try:
+            note = self._fetch(self.kwargs.get('annotation_id'), self.kwargs.get('reply_id'), user_id=user)
+        except Note.DoesNotExist:
             return Response('Annotation not found! No update performed.', status=status.HTTP_404_NOT_FOUND)
 
         try:
@@ -193,10 +206,14 @@ class AnnotationDetailView(APIView):
         """
         Delete an annotation.
         """
-        note = self._fetch(self.kwargs.get('annotation_id'), self.kwargs.get('reply_id'))
-
-        if not note:
+        user = self.request.data.get('user', None)
+        try:
+            note = self._fetch(self.kwargs.get('annotation_id'), self.kwargs.get('reply_id'), user_id=user)
+        except Note.DoesNotExist:
             return Response('Annotation not found! No update performed.', status=status.HTTP_404_NOT_FOUND)
+
+        if note.user_id != user:
+            return Response("You cannot delete annotations you didn't create.", status=status.HTTP_403_FORBIDDEN)
 
         note.delete()
 

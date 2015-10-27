@@ -4,20 +4,34 @@ from django.core.exceptions import ValidationError
 
 from .managers import AnnotationManager, CommentManager
 
+
+
 class Note(models.Model):
     """
     Annotation model.
     """
+
+    # Permission types for a note.
+    PERM_PERSONAL = 'personal'
+    PERM_COURSE = 'course'
+    PERM_TYPES = (
+        (PERM_PERSONAL, 'Personal'),
+        (PERM_COURSE, 'Course-wide'),
+    )
+
     user_id = models.CharField(max_length=255, db_index=True, help_text="Anonymized user id, not course specific")
     course_id = models.CharField(max_length=255, db_index=True)
     usage_id = models.CharField(max_length=255, help_text="ID of XBlock where the text comes from")
-    quote = models.TextField(default="")
     parent = models.ForeignKey('Note', blank=True, null=True, help_text="Parent note, if this is a comment")
+    quote = models.TextField(default="")
     text = models.TextField(default="", blank=True, help_text="Student's thoughts on the quote")
     ranges = models.TextField(help_text="JSON, describes position of quote in the source text")
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
     tags = models.TextField(help_text="JSON, list of comma-separated tags", default="[]")
+    permission_type = models.CharField(
+        max_length=100, choices=PERM_TYPES, default=PERM_PERSONAL, help_text="Permission level user must meet to see this.")
+
 
     objects = AnnotationManager()
     comments = CommentManager()
@@ -60,5 +74,6 @@ class Note(models.Model):
             'ranges': json.loads(self.ranges),
             'created': created,
             'updated': updated,
-            'tags': json.loads(self.tags)
+            'tags': json.loads(self.tags),
+            'permission_type': self.permission_type,
         }

@@ -33,12 +33,11 @@ class BaseAnnotationViewTests(APITestCase):
     def setUp(self):
         call_command('clear_index', interactive=False)
 
-        token = get_id_token(TEST_USER)
-        self.client.credentials(HTTP_X_ANNOTATOR_AUTH_TOKEN=token)
-        self.headers = {"user": TEST_USER}
+        self._set_user(TEST_USER)
 
         self.payload = {
             "user": TEST_USER,
+            "permission_type": "personal",
             "usage_id": "test-usage-id",
             "course_id": "test-course-id",
             "text": "test note text",
@@ -53,6 +52,11 @@ class BaseAnnotationViewTests(APITestCase):
             ],
             "tags": ["pink", "lady"]
         }
+
+    def _set_user(self, user):
+        token = get_id_token(user)
+        self.client.credentials(HTTP_X_ANNOTATOR_AUTH_TOKEN=token)
+        self.headers = {"user": user}
 
     def _create_annotation(self, **kwargs):
         """
@@ -313,6 +317,35 @@ class AnnotationDetailViewTests(BaseAnnotationViewTests):
         response = self.client.get(url, self.headers)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND, "response should be 404 NOT FOUND")
 
+    def test_read_personal_other_user(self):
+        """
+        Ensure users can't read other users' personal annotations
+        """
+        self._set_user('other-user')
+        payload = self.payload.copy()
+        payload['user'] = 'other-user'
+        note_id = self._create_annotation(**payload)['id']
+        self._set_user(TEST_USER)
+
+        url = reverse('api:v1:annotations_detail', kwargs={'annotation_id': note_id})
+        response = self.client.get(url, self.headers)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND, "user can see other user's personal notes")
+
+    def test_read_course_other_user(self):
+        """
+        Test users can fetch other users' annotations if they're course-wide permissioned.
+        """
+        self._set_user('other-user')
+        payload = self.payload.copy()
+        payload['user'] = 'other-user'
+        payload['permission_type'] = 'course'
+        note_id = self._create_annotation(**payload)['id']
+        self._set_user(TEST_USER)
+
+        url = reverse('api:v1:annotations_detail', kwargs={'annotation_id': note_id})
+        response = self.client.get(url, self.headers)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
     def test_update(self):
         """
         Ensure we can update an existing annotation.
@@ -410,6 +443,21 @@ class AnnotationDetailViewTests(BaseAnnotationViewTests):
         url = reverse('api:v1:annotations_detail', kwargs={'annotation_id': note['id']})
         response = self.client.get(url, self.headers)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_delete_other_user(self):
+        """
+        Test that users can't delete other users annotations.
+        """
+        self._set_user('other-user')
+        payload = self.payload.copy()
+        payload['user'] = 'other-user'
+        payload['permission_type'] = 'course'
+        note_id = self._create_annotation(**payload)['id']
+        self._set_user(TEST_USER)
+
+        url = reverse('api:v1:annotations_detail', kwargs={'annotation_id': note_id})
+        response = self.client.delete(url, self.headers)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_delete_notfound(self):
         """

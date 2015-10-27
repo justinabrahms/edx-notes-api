@@ -59,12 +59,12 @@ class UpdateIndexTest(BaseAnnotationViewTests):
 
         # Delete first note.
         url = reverse('api:v1:annotations_detail', kwargs={'annotation_id': first_note['id']})
-        response = self.client.delete(url, self.headers)
+        self.client.delete(url, self.headers)
 
         # Delete second note.
         second_start = datetime.datetime.now()
         url = reverse('api:v1:annotations_detail', kwargs={'annotation_id': second_note['id']})
-        response = self.client.delete(url, self.headers)
+        self.client.delete(url, self.headers)
         second_end = datetime.datetime.now() + datetime.timedelta(minutes=10)
 
         # Try to update when only second note was deleted.
