@@ -104,7 +104,7 @@ class AnnotationListView(APIView):
         """
         params = self.request.QUERY_PARAMS.dict()
 
-        if 'course_id' not in params:
+        if 'course_id' not in params or 'user' not in params:
             return Response(status=status.HTTP_400_BAD_REQUEST)
 
         results = Note.objects.filter(course_id=params['course_id'], user_id=params['user']).order_by('-updated')

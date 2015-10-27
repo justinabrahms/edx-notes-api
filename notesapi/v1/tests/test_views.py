@@ -222,6 +222,17 @@ class AnnotationListViewTests(BaseAnnotationViewTests):
         del annotation['created']
         self.assertEqual(annotation, note)
 
+    @override_settings(DISABLE_TOKEN_CHECK=True)
+    def test_read_all_no_user(self):
+        """
+        Tests user is a required parameter of the get query, even if token checking is disabled.
+        """
+        headers = self.headers.copy()
+        headers['course_id'] = 'a/b/c'
+        del headers['user']
+        response = self.client.get(reverse('api:v1:annotations'), headers)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_read_all_no_annotations(self):
         """
         Tests list all annotations endpoint when no annotations are present in database.
