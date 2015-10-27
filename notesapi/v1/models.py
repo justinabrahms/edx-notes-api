@@ -58,22 +58,31 @@ class Note(models.Model):
 
         return cls(**note_dict)
 
+    @property
+    def is_comment(self):
+        return self.parent_id is not None
+
     def as_dict(self):
         """
         Returns the note object as a dictionary.
         """
         created = self.created.isoformat() if self.created else None
         updated = self.updated.isoformat() if self.updated else None
-        return {
+        result = {
             'id': str(self.pk),
             'user': self.user_id,
             'course_id': self.course_id,
             'usage_id': self.usage_id,
             'text': self.text,
-            'quote': self.quote,
-            'ranges': json.loads(self.ranges),
             'created': created,
             'updated': updated,
-            'tags': json.loads(self.tags),
-            'permission_type': self.permission_type,
         }
+
+        if not self.is_comment:
+            result.update({
+                'quote': self.quote,
+                'ranges': json.loads(self.ranges),
+                'tags': json.loads(self.tags),
+                'permission_type': self.permission_type,
+            })
+        return result

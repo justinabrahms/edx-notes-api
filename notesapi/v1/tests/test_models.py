@@ -59,3 +59,14 @@ class NoteTest(TestCase):
         note.save()
         self.assertEqual("[]", note.tags)
         self.assertEqual([], note.as_dict()["tags"])
+
+    def test_is_comment(self):
+        self.assertTrue(Note(parent_id=1).is_comment)
+        self.assertFalse(Note().is_comment)
+
+    def test_as_dict__comment_doesnt_contain_ranges(self):
+        self.note_dict['parent_id'] = 1
+        n = Note.create(self.note_dict)
+        dict_keys = set(n.as_dict().keys())
+        for x in ['quote', 'ranges', 'tags', 'permission_type']:
+            self.assertTrue(x not in dict_keys, "Found unexpected key: %s" % x)
