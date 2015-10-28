@@ -501,6 +501,24 @@ class AnnotationSearchViewTests(BaseAnnotationViewTests):
         search_and_verify("First", "First one", [])
         search_and_verify("Second", "Second note", ["tag1", "tag2"])
 
+    @override_settings(MAX_PAGINATED_RESULTS=1)
+    def test_limits(self):
+        for i in range(3):
+            self._create_annotation(text='note %s' % i)
+
+        results = self._get_search_results(offset=1)
+        self.assertEqual(len(results['rows']), 1)
+        note = results['rows'][0]
+        self.assertTrue('1' in note['text'], 'Returned the wrong note. Expected 1, got %s' % note['text'])
+
+    @override_settings(MAX_PAGINATED_RESULTS=1)
+    def test_limits__cant_override_max(self):
+        for i in range(3):
+            self._create_annotation(text='note %s' % i)
+
+        results = self._get_search_results(limit=3)
+        self.assertEqual(len(results['rows']), 1)
+
     def test_search_deleted(self):
         """
         Tests for search method to not return deleted notes.
@@ -518,6 +536,17 @@ class AnnotationSearchViewTests(BaseAnnotationViewTests):
         results = self._get_search_results()
         self.assertEqual(results['total'], 1)
         self.assertEqual(results['rows'][0]['text'], 'Second one')
+
+    @unittest.skipIf(settings.ES_DISABLED, "Search backend specific test")
+    @override_settings(MAX_PAGINATED_RESULTS=1)
+    def test_search__obeys_limit(self):
+        # NOTE: offset can't easily be tested as there is no sort on search backend results.
+        for i in range(3):
+            self._create_annotation(text='note %s' % i)
+
+        # Text search forces ES use.
+        results = self._get_search_results(offset=1, limit=2, text='note')
+        self.assertEqual(len(results['rows']), 1)
 
     @unittest.skipIf(settings.ES_DISABLED, "MySQL does not do highlighing")
     def test_search_highlight(self):

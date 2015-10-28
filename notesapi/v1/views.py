@@ -20,6 +20,13 @@ if not settings.ES_DISABLED:
 log = logging.getLogger(__name__)
 
 
+def get_offset_limit_from_query_params(params):
+    offset = int(params.get('offset', 0))
+    limit = min(int(params.get('limit', settings.MAX_PAGINATED_RESULTS)), settings.MAX_PAGINATED_RESULTS)
+
+    return offset, limit
+
+
 class AnnotationSearchView(APIView):
     """
     Search annotations.
@@ -40,6 +47,7 @@ class AnnotationSearchView(APIView):
         Search annotations in database
         """
         params = self.request.QUERY_PARAMS.dict()
+        offset, limit = get_offset_limit_from_query_params(params)
         query = Note.objects.filter(
             **{f: v for (f, v) in params.items() if f in ('course_id', 'usage_id')}
         ).order_by('-updated')
@@ -52,13 +60,14 @@ class AnnotationSearchView(APIView):
         if 'text' in params:
             query = query.filter(Q(text__icontains=params['text']) | Q(tags__icontains=params['text']))
 
-        return [note.as_dict() for note in query]
+        return [note.as_dict() for note in query[offset:offset+limit]]
 
     def get_from_es(self, *args, **kwargs):  # pylint: disable=unused-argument
         """
         Search annotations in ElasticSearch
         """
         params = self.request.QUERY_PARAMS.dict()
+        offset, limit = get_offset_limit_from_query_params(params)
         query = SearchQuerySet().models(Note).filter(
             **{f: v for (f, v) in params.items() if f in ('user', 'course_id', 'usage_id')}
         )
@@ -80,7 +89,7 @@ class AnnotationSearchView(APIView):
             query = query.highlight(**opts)
 
         results = []
-        for item in query:
+        for item in query[offset:offset+limit]:
             note_dict = item.get_stored_fields()
             note_dict['ranges'] = json.loads(item.ranges)
             # If ./manage.py rebuild_index has not been run after tags were added, item.tags will be None.
@@ -105,6 +114,7 @@ class AnnotationListView(APIView):
         Get a list of all annotations.
         """
         params = self.request.QUERY_PARAMS.dict()
+        offset, limit = get_offset_limit_from_query_params(params)
 
         if 'course_id' not in params or 'user' not in params:
             return Response(status=status.HTTP_400_BAD_REQUEST)
@@ -116,7 +126,7 @@ class AnnotationListView(APIView):
                                    permission_type=Note.PERM_PERSONAL) |
                                  Q(permission_type=Note.PERM_COURSE))
 
-        return Response([result.as_dict() for result in results])
+        return Response([result.as_dict() for result in results[offset:offset+limit]])
 
     def post(self, *args, **kwargs):  # pylint: disable=unused-argument
         """
@@ -229,12 +239,14 @@ class ReplyListView(APIView):
         """
         Fetch list of comments for a particular annotation.
         """
-        note_id = self.kwargs.get('annotation_id')
 
+        params = self.request.QUERY_PARAMS.dict()
+        offset, limit = get_offset_limit_from_query_params(params)
+
+        note_id = self.kwargs.get('annotation_id')
         results = Note.comments.filter(parent_id=note_id).order_by('-created')
 
-        # TODO(abrahms): as_dict might take a kwarg for comment vs note format?
-        return Response([result.as_dict() for result in results])
+        return Response([result.as_dict() for result in results[offset:offset+limit]])
 
     def post(self, *args, **kwargs):  # pylint: disable=unused-argument
         """

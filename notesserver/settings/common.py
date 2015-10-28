@@ -78,3 +78,6 @@ CORS_ALLOW_HEADERS = (
 TEMPLATE_DIRS = (
     'templates',
 )
+
+# Maximum number of results per page in responses
+MAX_PAGINATED_RESULTS = 100
