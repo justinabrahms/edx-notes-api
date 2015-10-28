@@ -258,7 +258,12 @@ class ReplyListView(APIView):
             return Response(status=status.HTTP_400_BAD_REQUEST)
 
         # Copy some data from the original Note object.
-        ann = Note.objects.get(id=self.kwargs.get('annotation_id'))
+        try:
+            ann = Note.objects.get(id=self.kwargs.get('annotation_id'))
+        except Note.DoesNotExist as error:
+            log.debug(error, exc_info=True)
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+
         self.request.DATA['parent_id'] = ann.id
         self.request.DATA['course_id'] = ann.course_id
         self.request.DATA['usage_id'] = ann.usage_id
@@ -272,5 +277,5 @@ class ReplyListView(APIView):
 
         note.save()
 
-        location = reverse('api:v1:annotations_comment_detail', kwargs={'annotation_id': note.parent_id, 'reply_id': note.id})
+        location = reverse('api:v1:annotations_comments_detail', kwargs={'annotation_id': note.parent_id, 'reply_id': note.id})
         return Response(note.as_dict(), status=status.HTTP_201_CREATED, headers={'Location': location})

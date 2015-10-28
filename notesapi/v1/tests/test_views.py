@@ -15,6 +15,8 @@ from django.test.utils import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from notesapi.v1.models import Note
+
 from .helpers import get_id_token
 
 TEST_USER = "test_user_id"
@@ -859,3 +861,61 @@ class TokenTests(BaseAnnotationViewTests):
         self.payload['user'] = 'other-user'
         response = self.client.post(url + "?user=" + TEST_USER, self.payload, format='json')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class ReplyListViewTests(BaseAnnotationViewTests):
+    """Test creation / listing of replies."""
+    def test_get_comments(self):
+        "Test user can get replies"
+        n = self._create_annotation(text='note')
+        self._create_annotation(text='reply', parent_id=n['id'])
+
+        self.client.get(reverse('api:v1:annotations_comments', args=[n['id']]), format='json')
+
+    def test_create_reply(self):
+        "Test user can create replies"
+        n = self._create_annotation(text='note')
+
+        self.payload['parent_id'] = n['id']
+        self.payload['text'] = 'reply'
+
+        url = reverse('api:v1:annotations_comments', args=[n['id']])
+        resp = self.client.post(url, self.payload, format='json')
+
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(1, Note.comments.all().count())
+
+    def test_create__doesnt_allow_setting_id(self):
+        "You can't set an id during creation"
+        n = self._create_annotation(text='note')
+
+        self.payload['id'] = 9
+        self.payload['parent_id'] = n['id']
+        self.payload['text'] = 'reply'
+
+        url = reverse('api:v1:annotations_comments', args=[n['id']])
+        resp = self.client.post(url, self.payload, format='json')
+
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_invalid_parent_errors(self):
+        "You must provide a valid parent"
+        self.payload['parent_id'] = 'this is a string, not an int'
+
+        url = reverse('api:v1:annotations_comments', args=[32938])
+        resp = self.client.post(url, self.payload, format='json')
+
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+    def test_model_validation_faliure_errors(self):
+        "You get an error if you pass invalid data."
+        n = self._create_annotation(text='note')
+
+        self.payload['parent_id'] = n['id']
+        self.payload['permission_type'] = 'the letter q'
+
+        url = reverse('api:v1:annotations_comments', args=[n['id']])
+        resp = self.client.post(url, self.payload, format='json')
+
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
